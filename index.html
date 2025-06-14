@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>count 20 seconds.</title>
+  <style>
+    body {
+      background-color: gray;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    h1 {
+      margin: 0.5em 0;
+    }
+    #prompt {
+      font-size: 1.2em;
+      animation: flash 1s step-start infinite;
+      cursor: pointer;
+    }
+    @keyframes flash {
+      50% { opacity: 0; }
+    }
+    #leaderboard {
+      margin-top: 1.5em;
+    }
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+      width: auto;
+    }
+    th, td {
+      border: 1px solid white;
+      padding: 0.4em 0.8em;
+    }
+    #restart {
+      margin-top: 1em;
+      padding: 0.6em 1.2em;
+      font-size: 1em;
+      cursor: pointer;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="title">count 20 seconds.</h1>
+  <div id="prompt">click screen to begin</div>
+  <div id="leaderboard"></div>
+  <button id="restart">Restart</button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script>
+    // TODO: replace with your Firebase project's config
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const titleEl = document.getElementById('title');
+    const promptEl = document.getElementById('prompt');
+    const lbEl = document.getElementById('leaderboard');
+    const restartBtn = document.getElementById('restart');
+
+    let startTime = null;
+    let waitingForSecondClick = false;
+
+    // Reset to initial state
+    function reset() {
+      titleEl.textContent = 'count 20 seconds.';
+      promptEl.textContent = 'click screen to begin';
+      promptEl.style.display = 'block';
+      lbEl.innerHTML = '';
+      restartBtn.style.display = 'none';
+      waitingForSecondClick = false;
+    }
+
+    // Handle all body clicks
+    document.body.addEventListener('click', () => {
+      // If we're waiting for the second click...
+      if (waitingForSecondClick) {
+        const elapsed = (Date.now() - startTime) / 1000;
+        titleEl.textContent = `you counted ${elapsed.toFixed(2)} seconds.`;
+        promptEl.style.display = 'none';
+        waitingForSecondClick = false;
+        saveAndShowLeaderboard(elapsed);
+      }
+      // Otherwise, if we're at the very start screen...
+      else if (titleEl.textContent === 'count 20 seconds.') {
+        promptEl.textContent = 'click after 20 seconds';
+        startTime = Date.now();
+        // Enable second-click detection only after 0.5s
+        setTimeout(() => {
+          waitingForSecondClick = true;
+        }, 500);
+      }
+    });
+
+    // Restart button
+    restartBtn.addEventListener('click', reset);
+
+    // Save this run to Firestore and show top 5
+    async function saveAndShowLeaderboard(elapsed) {
+      const diff = Math.abs(elapsed - 20);
+      // Save a new document
+      await db.collection('times').add({
+        elapsed: elapsed,
+        diff: diff,
+        timestamp: Date.now()
+      });
+
+      // Query top 5 runs by closest diff
+      const snapshot = await db
+        .collection('times')
+        .orderBy('diff')
+        .limit(5)
+        .get();
+
+      // Build a simple HTML table
+      let html = '<table><tr><th>Your time (s)</th><th>When (DD/MM/YYYY HH:MM:SS)</th></tr>';
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const d = new Date(data.timestamp);
+        const formatted = 
+          String(d.getDate()).padStart(2,'0') + '/' +
+          String(d.getMonth()+1).padStart(2,'0') + '/' +
+          d.getFullYear() + ' ' +
+          String(d.getHours()).padStart(2,'0') + ':' +
+          String(d.getMinutes()).padStart(2,'0') + ':' +
+          String(d.getSeconds()).padStart(2,'0');
+        html += `<tr>
+                   <td>${data.elapsed.toFixed(2)}</td>
+                   <td>${formatted}</td>
+                 </tr>`;
+      });
+      html += '</table>';
+
+      lbEl.innerHTML = html;
+      restartBtn.style.display = 'inline-block';
+    }
+
+    // Initialize
+    window.addEventListener('load', reset);
+  </script>
+</body>
+</html>
